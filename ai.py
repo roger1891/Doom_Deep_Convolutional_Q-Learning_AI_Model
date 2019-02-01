@@ -50,4 +50,16 @@ class CNN(nn.Module):
         x = self.fc2(x) #apply to neural of the hidden layer (x)
         return x #return output neuron
 
+# Making the body
+
+class SoftmaxBody(nn.Module):
+    
+    def __init__(self, T):
+        super(SoftmaxBody, self).__init__()
+        self.T = T #the higher exploration the less exoploration
+
+    def forward(self, outputs):
+        probs = F.softmax(outputs * self.T) #probability of different outputs
+        actions = probs.multinomial() #sample the actions according to distribution of probabilities
+        return actions #return action
 
