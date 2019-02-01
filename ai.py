@@ -63,3 +63,17 @@ class SoftmaxBody(nn.Module):
         actions = probs.multinomial() #sample the actions according to distribution of probabilities
         return actions #return action
 
+# Making the AI
+
+class AI:
+
+    def __init__(self, brain, body):
+        self.brain = brain
+        self.body = body
+
+    def __call__(self, inputs):
+        input = Variable(torch.from_numpy(np.array(inputs, dtype = np.float32)))
+        output = self.brain(input)
+        actions = self.body(output)
+        return actions.data.numpy()
+
