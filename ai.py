@@ -94,4 +94,62 @@ ai = AI(brain = cnn, body = softmax_body)
 # Setting up Experience Replay
 n_steps = experience_replay.NStepProgress(env = doom_env, ai = ai, n_step = 10) #learning every 10 steps
 memory = experience_replay.ReplayMemory(n_steps = n_steps, capacity = 10000) #use last 10000 steps
- 
+    
+# Implementing Eligibility Trace
+def eligibility_trace(batch):
+    gamma = 0.99
+    inputs = []
+    targets = []
+    for series in batch:
+        input = Variable(torch.from_numpy(np.array([series[0].state, series[-1].state], dtype = np.float32)))
+        output = cnn(input)
+        cumul_reward = 0.0 if series[-1].done else output[1].data.max() #if last transition of series is done
+        for step in reversed(series[:-1]):
+            cumul_reward = step.reward + gamma * cumul_reward
+        state = series[0].state
+        target = output[0].data #Q-value
+        target[series[0].action] = cumul_reward
+        inputs.append(state)
+        targets.append(target)
+    return torch.from_numpy(np.array(inputs, dtype = np.float32)), torch.stack(targets)
+
+# Making the moving average on 100 steps
+class MA:
+    def __init__(self, size): #size of list rewards
+        self.list_of_rewards = []
+        self.size = size
+    def add(self, rewards): #add cumulative reward (10 steps) and not simple reward
+        if isinstance(rewards, list): #if rewards are into a list
+            self.list_of_rewards += rewards #add rewards to list
+        else:
+            self.list_of_rewards.append(rewards) #append rewards to list
+        while len(self.list_of_rewards) > self.size: #if more than 100 elements...
+            del self.list_of_rewards[0] #delete 1st element in list of rewards
+    def average(self): 
+        return np.mean(self.list_of_rewards) #get average and return
+ma = MA(100) #moving average object and 100 because we want it for 100 steps
+
+# Training the AI
+loss = nn.MSELoss()
+optimizer = optim.Adam(cnn.parameters(), lr = 0.001) #connection between optimizer and brain
+nb_epochs = 100
+for epoch in range(1, nb_epochs + 1):
+    memory.run_steps(200) #200 runs at 10 steps
+    for batch in memory.sample_batch(128):
+        inputs, targets = eligibility_trace(batch)
+        inputs, targets = Variable(inputs), Variable(targets)
+        predictions = cnn(inputs)
+        loss_error = loss(predictions, targets)
+        optimizer.zero_grad()
+        loss_error.backward()
+        optimizer.step()
+    rewards_steps = n_steps.rewards_steps()
+    ma.add(rewards_steps)
+    avg_reward = ma.average()
+    print("Epoch: %s, Average Reward: %s" % (str(epoch), str(avg_reward)))
+    if avg_reward >= 1500:#if AI reaches 1500 we can be sure that the ai reaches the goal and is good to go
+        print("Congratulations, your AI wins")
+        break
+
+# Closing the Doom environment
+doom_env.close()
